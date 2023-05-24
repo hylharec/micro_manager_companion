@@ -5,7 +5,7 @@ from TkInterface import TkInterface
 
 if __name__ == "__main__":
   # Handles connection with MicroManager Core server and showing opencv window
-  camHandler = CameraHandler()
+  camHandler = CameraHandler(verbose=False)
   camHandler.start()
 
   # Handles tkinter GUI

@@ -1,3 +1,10 @@
-OpenCVgrabber:
-  Exposure: '10'
-  Flip X: '0'
+Preset0:
+  OpenCVgrabber:
+    Exposure: '10'
+    Flip X: '0'
+    Flip Y: '0'
+Preset1:
+  OpenCVgrabber:
+    Exposure: '200'
+    Flip X: '1'
+    Flip Y: '1'

@@ -5,13 +5,16 @@ import numpy as np
 from pycromanager import Core
 
 class CameraHandler:
-    def __init__(self):
+    def __init__(self, verbose: bool = False):
       # Connect to MM _core server
       try:
         self._core: Core = Core()
       except Exception:
         print("Could not connect to MicroManager core server, make sure it is running. Exit.\n\n")
         exit()
+
+      # Enables/Disables some print functions
+      self._verbose = verbose
 
       self._update_thread_queue = queue.Queue(maxsize=32)
       self._snap_thread_queue = queue.Queue(maxsize=32)
@@ -20,6 +23,7 @@ class CameraHandler:
       self._snap_thread = threading.Thread(target=self._snap_update, args=(self._snap_thread_queue,))
       self._img_queue = []
       self._last_integrated_img = None
+      self._last_equalized_img = None
       self._last_final_img = None
       self._MAX_INTEGRATION_LEN = 50
 
@@ -41,6 +45,9 @@ class CameraHandler:
 
     def get_last_integrated_img(self):
       return self._last_integrated_img
+
+    def get_last_equalized_img(self):
+      return self._last_equalized_img
 
     def get_last_final_img(self):
       return np.array(self._last_final_img)
@@ -95,8 +102,6 @@ class CameraHandler:
             for i in range(nb_images):
               result = cv2.addWeighted(result, i / nb_images, self._img_queue[-i-1], (nb_images - i) / nb_images, 0)
 
-          self._last_integrated_img = np.array(result)
-
           # Apply noise image substraction if required
           if params["dark"] is not None and params["subtract_dark"] is True:
             if params["subtraction_mode"] == "absdiff":
@@ -104,8 +109,9 @@ class CameraHandler:
             else:
               result = cv2.subtract(result, params["dark"])
 
-          # Apply equalization before adding the overlay
+          self._last_integrated_img = np.array(result)
 
+          # Apply equalization before adding the overlay
           hist,_ = np.histogram(result.flatten(),256,[0,256])
           (gate_low, gate_high) = params["gate"]
           lut = np.zeros((256, 1))
@@ -121,7 +127,7 @@ class CameraHandler:
             result[x] = lut[result[x]].reshape((result.shape[1]))
 
           #result = lut[result]
-          self._last_equilized_img = result
+          self._last_equalized_img = np.array(result)
 
           if params["static"] is not None and params["overlay_static"] is True:
             # Send grayscale to red channel for better visualisation
@@ -144,6 +150,8 @@ class CameraHandler:
     def _snap_update(self, control_queue: queue.Queue):
       while True:
         self._core.snap_image()
+        if self._verbose:
+          print("Snap!")
         tagged_image = self._core.get_tagged_image()
         pixels = np.reshape(
             tagged_image.pix, newshape=[tagged_image.tags["Height"], tagged_image.tags["Width"], 4]

@@ -2,7 +2,7 @@ import numpy as np
 
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk
+    FigureCanvasTkAgg
 )
 from matplotlib.figure import Figure
 
@@ -29,7 +29,7 @@ class TkInterface:
     self._window.wm_title("Embedding in Tk")
 
     self._btn_exit = ttk.Button(self._window, text="Exit", command=self.pre_exiting)
-    self._btn_exit.grid(row=0, column=0)
+    self._btn_exit.grid(row=0, column=0, padx=5, pady=5)
 
     self._tabs_ctrl = ttk.Notebook(self._window)
 
@@ -128,8 +128,8 @@ class ContrastPlot:
     # Create thread (not started yet)
     self._thread = threading.Thread(target=self._thread_update_function, args=(self._thread_stop_queue, self._data_queue))
 
-  def grid(self, row=0, column=0, rowspan=0, columnspan=0):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan)
+  def grid(self, row=0, column=0, rowspan=0, columnspan=0, padx: int = 5, pady: int = 5):
+    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
 
   def start(self):
     if not self._thread.is_alive():
@@ -217,7 +217,7 @@ class BasicProcessing:
     # ########################################################################################################
     # Dark/Noise image handling
     self._btn_dark_img = ttk.Button(self._frame, text="Take dark image", command=self._take_dark_img)
-    self._btn_dark_img.grid(row=0, column=0)
+    self._btn_dark_img.grid(row=0, column=0, padx=5, pady=5)
 
     self._check_dark_value = tkinter.BooleanVar()
     self._check_dark = ttk.Checkbutton(
@@ -228,12 +228,12 @@ class BasicProcessing:
       offvalue=False,
       command=self._check_dark_update
     )
-    self._check_dark.grid(row=0, column=1)
+    self._check_dark.grid(row=0, column=1, padx=5, pady=5)
 
     # ########################################################################################################
     # Overlay handling
     self._btn_static_img = ttk.Button(self._frame, text="Take static image", command=self._take_static_img)
-    self._btn_static_img.grid(row=1, column=0)
+    self._btn_static_img.grid(row=1, column=0, padx=5, pady=5)
 
     self._check_static_value = tkinter.BooleanVar()
     self._check_static = ttk.Checkbutton(
@@ -244,42 +244,42 @@ class BasicProcessing:
       offvalue=False,
       command=self._check_static_update
     )
-    self._check_static.grid(row=1, column=1)
+    self._check_static.grid(row=1, column=1, padx=5, pady=5)
 
-    ttk.Label(self._frame, text="Overlay opacity: ").grid(row=1, column=2)
+    ttk.Label(self._frame, text="Overlay opacity: ").grid(row=1, column=2, padx=5, pady=5)
     self._scale_static = ttk.Scale(self._frame, from_=0, to=100, command=self._scale_static_update)
     self._scale_static.set(50)
-    self._scale_static.grid(row=1, column=3)
+    self._scale_static.grid(row=1, column=3, padx=5, pady=5)
     # ########################################################################################################
     # Contrast thresholds handling
     self._gate_low_label = ttk.Label(self._frame, text="Low contrast gate: 0")
-    self._gate_low_label.grid(row=2, column=0)
+    self._gate_low_label.grid(row=2, column=0, padx=5, pady=5)
     self._scale_gate_low = ttk.Scale(self._frame, from_=0, to=254, command=self._gate_scale_update, length=200)
-    self._scale_gate_low.grid(row=2, column=1, columnspan=3)
+    self._scale_gate_low.grid(row=2, column=1, columnspan=3, padx=5, pady=5)
 
     self._gate_high_label = ttk.Label(self._frame, text="High contrast gate: 1")
-    self._gate_high_label.grid(row=3, column=0)
+    self._gate_high_label.grid(row=3, column=0, padx=5, pady=5)
     self._scale_gate_high = ttk.Scale(self._frame, from_=1, to=255, command=self._gate_scale_update, length=200)
     self._scale_gate_high.set(255)
-    self._scale_gate_high.grid(row=3, column=1, columnspan=3)
+    self._scale_gate_high.grid(row=3, column=1, columnspan=3, padx=5, pady=5)
     # ########################################################################################################
 
-  def grid(self, row: int, column: int, rowspan: int, columnspan: int):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan)
+  def grid(self, row: int, column: int, rowspan: int, columnspan: int, padx: int = 5, pady: int = 5):
+    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
 
   def _take_dark_img(self):
-    if self._cam_handler.get_last_img() is None:
+    if self._cam_handler.get_last_equalized_img() is None:
       print("Warning: could not save dark image because no snapped image.")
     else:
-      self._cam_handler.update_param("dark", self._cam_handler.get_last_img())
-      cv2.imwrite('images/dark.bmp', self._cam_handler.get_last_img())
+      self._cam_handler.update_param("dark", self._cam_handler.get_last_equalized_img())
+      cv2.imwrite('images/dark.bmp', self._cam_handler.get_last_equalized_img())
 
   def _take_static_img(self):
-    if self._cam_handler.get_last_img() is None:
+    if self._cam_handler.get_last_equalized_img() is None:
       print("Warning: could not save static image because no snapped image.")
     else:
-      self._cam_handler.update_param("static", self._cam_handler.get_last_img())
-      cv2.imwrite('images/static.bmp', self._cam_handler.get_last_img())
+      self._cam_handler.update_param("static", self._cam_handler.get_last_equalized_img())
+      cv2.imwrite('images/static.bmp', self._cam_handler.get_last_equalized_img())
 
   def _check_dark_update(self):
     self._cam_handler.update_param("subtract_dark", self._check_dark_value.get())
@@ -322,10 +322,10 @@ class ImageIntegration:
     self._scale_label_val = tkinter.StringVar()
     self._scale_label_val.set("1")
     self._scale_label = ttk.Label(self._frame, textvariable=self._scale_label_val)
-    self._scale_label.grid(row=0, column=0)
+    self._scale_label.grid(row=0, column=0, padx=5, pady=5)
 
     self._scale_integr = ttk.Scale(self._frame, from_=1, to=50, command=self._integr_val_update)
-    self._scale_integr.grid(row=0, column=1)
+    self._scale_integr.grid(row=0, column=1, padx=5, pady=5)
 
     self._check_integr_value = tkinter.BooleanVar()
     self._check_integr = ttk.Checkbutton(
@@ -336,12 +336,12 @@ class ImageIntegration:
       offvalue=False,
       command=self._check_integr_update
     )
-    self._check_integr.grid(row=0, column=2)
+    self._check_integr.grid(row=0, column=2, padx=5, pady=5)
 
     # ########################################################################################################
 
-  def grid(self, row: int, column: int, rowspan: int, columnspan: int):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan)
+  def grid(self, row: int, column: int, rowspan: int, columnspan: int, padx: int = 5, pady: int = 5):
+    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
 
   def _integr_val_update(self, _):
     val = int(self._scale_integr.get())
@@ -365,20 +365,20 @@ class Save:
     # Image saving
 
     self._prefix_label = ttk.Label(self._frame, text="Saved image prefix: ")
-    self._prefix_label.grid(row=0, column=0)
+    self._prefix_label.grid(row=0, column=0, padx=5, pady=5)
 
     self._prefix_entry_value = tkinter.StringVar()
     self._prefix_entry = ttk.Entry(self._frame, textvariable=self._prefix_entry_value, width=50)
-    self._prefix_entry.grid(row=0, column=1)
+    self._prefix_entry.grid(row=0, column=1, padx=5, pady=5)
 
     self._save_btn = ttk.Button(self._frame, text="Save", command=self._save_btn_update)
-    self._save_btn.grid(row=1, column=0)
+    self._save_btn.grid(row=1, column=0, padx=5, pady=5)
 
     self._save_confirm_label = ttk.Label(self._frame, text="")
-    self._save_confirm_label.grid(row=1, column=1)
+    self._save_confirm_label.grid(row=1, column=1, padx=5, pady=5)
 
-  def grid(self, row: int, column: int, rowspan: int = 1, columnspan: int = 1):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan)
+  def grid(self, row: int, column: int, rowspan: int = 1, columnspan: int = 1, padx: int = 5, pady: int = 5):
+    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
 
   def _save_btn_update(self):
     prefix = self._prefix_entry_value.get()
@@ -409,60 +409,166 @@ class Setup:
     # ########################################################################################################
     # Parameters list
     self._params_frame = ttk.LabelFrame(self._frame, text="Parameters from yaml config file")
-    self._params_frame.grid(row=0, column=0, columnspan=2)
+    self._params_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
 
     # First time yaml config file load and send to MMCore
     self._params_widgets = []
     self._yaml_config: dict = {}
-    self._reload_config()
+    self._load_config_file()
 
     # For each entry in yaml file, create an editable entry widget on GUI
     row = 0
-    for k_device, v_device in self._yaml_config.items():
+    for k_device, v_device in list(self._yaml_config.values())[0].items():
       device_frame = ttk.LabelFrame(self._params_frame, text=k_device)
-      device_frame.grid(row=row, column=0)
+      device_frame.grid(row=row, column=0, padx=5, pady=5)
       row += 1
-      subrow = 0
+      subrow: int = 0
       for k, v in v_device.items():
-        label = ttk.Label(device_frame, text=k_device + "." + k)
-        param_value = tkinter.StringVar()
-        param_value.set(v)
-        param_entry = ttk.Entry(device_frame, textvariable=param_value)
-
-        label.grid(row=subrow, column=0)
-        param_entry.grid(row=subrow, column=1)
+        setup_entry = SetupEntry(device_frame, k_device, k, v)
+        setup_entry.grid(row=subrow, column=0)
         subrow += 1
 
-        self._params_widgets.append((label, param_value))
+        self._params_widgets.append(setup_entry)
 
-    self._reload_btn = ttk.Button(self._frame, text="Reload config", command=self._reload_config)
-    self._reload_btn.grid(row=1, column=0)
+    # Drop down menu that enables preset switching, on first preset by default
+    presets = list(self._yaml_config.keys())
+    self._preset_list_value = tkinter.StringVar()
+    self._preset_list = ttk.OptionMenu(self._frame, self._preset_list_value, presets[0], *presets, command=self._preset_list_update)
+    self._preset_list.grid(row=1, column=0, padx=5, pady=5)
 
-    self._save_btn = ttk.Button(self._frame, text="Save and send", command=self._update_config)
-    self._save_btn.grid(row=1, column=1)
+    # Sends config to mm after drop down menu was created
+    self._send_config_to_mm()
 
-  def grid(self, row: int, column: int, rowspan: int = 1, columnspan: int = 1):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan)
+    self._reload_btn = ttk.Button(self._frame, text="Load", command=self._reload_config)
+    self._reload_btn.grid(row=1, column=1, padx=5, pady=5)
 
-  def _update_config(self):
-    for (label, param_value) in self._params_widgets:
-      device_name = label["text"].split(".")[0]
-      param_name = label["text"].split(".")[1]
-      self._yaml_config[device_name][param_name] = param_value.get()
+    self._save_btn = ttk.Button(self._frame, text="Save", command=self._save_config)
+    self._save_btn.grid(row=2, column=0, padx=5, pady=5)
 
-      self._cam_handler.update_camera_parameter(device_name, param_name, param_value.get())
+    self._apply_btn = ttk.Button(self._frame, text="Apply", command=self._apply_config)
+    self._apply_btn.grid(row=2, column=1, padx=5, pady=5)
 
-    with open("parameters.yml", "w", encoding="utf-8") as f:
-      yaml.dump(self._yaml_config, f)
+  def grid(self, row: int, column: int, rowspan: int = 1, columnspan: int = 1, padx: int = 5, pady: int = 5):
+    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
+
+  def _preset_list_update(self, _):
+    """
+    Automatically reloads config from file to GUI when selecting a new preset value in drop down menu.
+    """
+    self._reload_config()
+
+  def _apply_config(self):
+    """
+    Sends current GUI config changes to micro manager.
+    (Warning: Does not save to file)
+    """
+    # Reads config changes from GUI
+    self._read_config_from_gui()
+    # Sends new config to micro manager
+    self._send_config_to_mm()
+
+  def _save_config(self):
+    """
+    Reads config changes from GUI and saves them to file
+    """
+    # Read GUI
+    self._read_config_from_gui()
+    # Save to file
+    self._save_config_file()
+
+    # Set all entries color to green
+    for entry in self._params_widgets:
+      entry.green()
 
   def _reload_config(self):
+    """
+    Reloads yaml config file and propagates new values to GUI.
+    """
+    # Reloads from file
+    self._load_config_file()
+
+    current_preset = self._preset_list_value.get()
+
+    # Update GUI depending on current preset
+    for setup_entry in self._params_widgets:
+      device_name = setup_entry.device_name
+      param_name = setup_entry.label["text"]
+      setup_entry.value.set(self._yaml_config[current_preset][device_name][param_name])
+
+    # Set all entries color to green
+    for entry in self._params_widgets:
+      entry.green()
+
+  def _load_config_file(self):
+    """
+    Reads yaml config file and stores as Python dictionary.
+    """
     self._yaml_config = {}
     with open("parameters.yml", "r", encoding="utf-8") as f:
       self._yaml_config = yaml.safe_load(f)
 
-    for k_device, v_device in self._yaml_config.items():
-        for k, v in v_device.items():
-          self._cam_handler.update_camera_parameter(k_device, k, v)
+  def _save_config_file(self):
+    """
+    Saves config dictionary to yaml file.
+    """
+    # Dumps dictionnary in yaml config file
+    with open("parameters.yml", "w", encoding="utf-8") as f:
+      yaml.dump(self._yaml_config, f)
 
-    for (label, param_value) in self._params_widgets:
-      param_value.set(self._yaml_config[label["text"].split(".")[0]][label["text"].split(".")[1]])
+  def _read_config_from_gui(self):
+    """
+    Reads GUI to update changes in config dictionary.
+    """
+    preset_name = self._preset_list_value.get()
+    # Reads from Entry widgets to update params dictionary
+    for setup_entry in self._params_widgets:
+      device_name = setup_entry.device_name
+      param_name = setup_entry.label["text"]
+
+      self._yaml_config[preset_name][device_name][param_name] = setup_entry.value.get()
+
+  def _send_config_to_mm(self):
+    """
+    Sends the config in dictionary to micro manager.
+    (Warning: Does not read config file or GUI, needs to be done before calling this method)
+    """
+    preset_name = self._preset_list_value.get()
+    for device_name, device_config in self._yaml_config[preset_name].items():
+      for param_name, param_value in device_config.items():
+        self._cam_handler.update_camera_parameter(device_name, param_name, param_value)
+
+class SetupEntry:
+  """
+  Small class used to simplify handling of automatically generated parameters configuration menu from yaml file.
+  """
+  def __init__(self, parent, device_name: str, param_name: str, param_value):
+    self._entry_saved_style = ttk.Style()
+    self._entry_saved_style.configure("saved_entry.TEntry", foreground="green")
+    self._entry_unsaved_style = ttk.Style()
+    self._entry_unsaved_style.configure("unsaved_entry.TEntry", foreground="red")
+
+    self.device_name = device_name
+    self.label = ttk.Label(parent, text=param_name)
+    self.value = tkinter.StringVar()
+    self.value.set(param_value)
+    self._param_entry = ttk.Entry(
+      parent,
+      textvariable=self.value,
+      validate="focusout",
+      validatecommand=self._entry_update,
+      style="saved_entry.TEntry"
+    )
+
+  def grid(self, row: int, column: int):
+    self.label.grid(row=row, column=0, padx=5, pady=5)
+    self._param_entry.grid(row=row, column=1, padx=5, pady=5)
+
+  def green(self):
+    """
+    Switches entry forground to green
+    """
+    self._param_entry.config(style = "saved_entry.TEntry")
+
+  def _entry_update(self):
+    self._param_entry.config(style = "unsaved_entry.TEntry")
+    return False
