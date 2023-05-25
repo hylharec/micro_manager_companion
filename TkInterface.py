@@ -25,7 +25,7 @@ class TkInterface:
     self._window = tkinter.Tk()
 
     self._window.protocol("WM_DELETE_WINDOW", self.pre_exiting)
-    self._window.geometry("800x600")
+    self._window.geometry("820x740")
     self._window.wm_title("Embedding in Tk")
 
     self._btn_exit = ttk.Button(self._window, text="Exit", command=self.pre_exiting)
@@ -101,10 +101,10 @@ class ContrastPlot:
     self._frame: ttk.LabelFrame = ttk.LabelFrame(self._parent, text="Contrast Histogram")
 
     # Local save of last data plotted
-    self._X = np.arange(0, 256, 1)
-    self._Y = np.zeros((256, 1))
+    self._X = np.arange(0, self._cam_handler.BIT_DEPTH, 1)
+    self._Y = np.zeros((self._cam_handler.BIT_DEPTH, 1))
 
-    self._gate = np.ones((256, 1))
+    self._gate = np.ones((self._cam_handler.BIT_DEPTH, 1))
 
     # Plot update period
     self._s_per_frames = 1.0 / 10.0 # 10 FPS
@@ -165,7 +165,7 @@ class ContrastPlot:
     print("Thread plots update started.")
     pause_render = False
     running = True
-    (gate_low, gate_high) = (0, 255)
+    (gate_low, gate_high) = (0, self._cam_handler.BIT_DEPTH-1)
     while running:
       # Get latest data to plot from queue
       while not data_queue.empty():
@@ -187,7 +187,7 @@ class ContrastPlot:
 
       data = self._cam_handler.get_last_integrated_img()
       if data is not None:
-        hist, _ = np.histogram(data.flatten(), 256, [0, 256])
+        hist, _ = np.histogram(data.flatten(), self._cam_handler.BIT_DEPTH, [0, self._cam_handler.BIT_DEPTH])
         self._Y = hist
         self._Y[0] = 0
         self._plot[0].set_data(self._X, self._Y)
@@ -254,13 +254,13 @@ class BasicProcessing:
     # Contrast thresholds handling
     self._gate_low_label = ttk.Label(self._frame, text="Low contrast gate: 0")
     self._gate_low_label.grid(row=2, column=0, padx=5, pady=5)
-    self._scale_gate_low = ttk.Scale(self._frame, from_=0, to=254, command=self._gate_scale_update, length=200)
+    self._scale_gate_low = ttk.Scale(self._frame, from_=0, to=self._cam_handler.BIT_DEPTH-2, command=self._gate_scale_update, length=200)
     self._scale_gate_low.grid(row=2, column=1, columnspan=3, padx=5, pady=5)
 
     self._gate_high_label = ttk.Label(self._frame, text="High contrast gate: 1")
     self._gate_high_label.grid(row=3, column=0, padx=5, pady=5)
-    self._scale_gate_high = ttk.Scale(self._frame, from_=1, to=255, command=self._gate_scale_update, length=200)
-    self._scale_gate_high.set(255)
+    self._scale_gate_high = ttk.Scale(self._frame, from_=1, to=self._cam_handler.BIT_DEPTH-1, command=self._gate_scale_update, length=200)
+    self._scale_gate_high.set(self._cam_handler.BIT_DEPTH-1)
     self._scale_gate_high.grid(row=3, column=1, columnspan=3, padx=5, pady=5)
     # ########################################################################################################
 

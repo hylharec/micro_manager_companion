@@ -27,9 +27,25 @@ class CameraHandler:
       self._last_final_img = None
       self._MAX_INTEGRATION_LEN = 50
 
-      do_mirror_x = int(self._core.get_property('OpenCVgrabber', 'Flip X'))
-      self._core.set_property('OpenCVgrabber', 'Flip X', 1 - do_mirror_x)
-      self._core.set_property("OpenCVgrabber", "Exposure", "500")
+      # Set image grayscale format
+      self._pixel_shape = 4 # 4 -> RGBA, 1 -> grayscale
+      self._INPUT_BIT_DEPTH = 256#16384
+      self.BIT_DEPTH = None
+      self._image_dtype = None
+      if np.log2(self._INPUT_BIT_DEPTH) > 32:
+        self._image_dtype = np.uint64
+        self.BIT_DEPTH = np.power(2, 64)
+      elif np.log2(self._INPUT_BIT_DEPTH) > 16:
+        self._image_dtype = np.uint32
+        self.BIT_DEPTH = np.power(2, 32)
+      elif np.log2(self._INPUT_BIT_DEPTH) >= 8: # TODO > instead of >=
+        self._image_dtype = np.uint16
+        self.BIT_DEPTH = np.power(2, 16)
+      else:
+        self._image_dtype = np.uint8
+        self.BIT_DEPTH = np.power(2, 8)
+      # Following attribute is used in picture snap thread function
+      self._INPUT_TO_OUTPUT_BIT_DEPTH_MULT = int(np.power(2.0, (np.log2(self.BIT_DEPTH) - np.log2(self._INPUT_BIT_DEPTH))))
 
     def __del__(self):
       self.stop()
@@ -80,11 +96,23 @@ class CameraHandler:
         "subtraction_mode": "subtract",
         "integration_val": 1,
         "integration": False,
-        "gate": (0, 255),
+        "gate": (0, self.BIT_DEPTH-1),
       }
 
       cv2.namedWindow("cv_win", cv2.WINDOW_NORMAL)
       cv2.startWindowThread()
+
+      # Some params are saved from one image processing loop to another to prevent recomputation
+      # Default gate values (as wide as possible)
+      gate_low, gate_high = params["gate"]
+      # LUT Function to equalize image
+      def lut_func(i: np.ndarray) -> np.ndarray:
+        nonlocal self
+        nonlocal gate_low
+        nonlocal gate_high
+        coef = (self.BIT_DEPTH - 1) / (gate_high - gate_low)
+        return np.maximum(0, np.minimum(self.BIT_DEPTH-1, (i - gate_low) * coef))
+      #lut_func_vec = np.vectorize(lut_func, otypes=[np.ndarray])
 
       while True:
         # Safely update parameters from queue (hypothesis: low param update rate)
@@ -95,6 +123,7 @@ class CameraHandler:
         if len(self._img_queue) > 0:
           # Last received image is at the end of the queue
           result = np.array(self._img_queue[-1])
+          # If the snap thread works correctly, the image shape should be (width, height)
 
           # Integrate over last few images if required
           if params["integration"] is True:
@@ -112,19 +141,12 @@ class CameraHandler:
           self._last_integrated_img = np.array(result)
 
           # Apply equalization before adding the overlay
-          hist,_ = np.histogram(result.flatten(),256,[0,256])
           (gate_low, gate_high) = params["gate"]
-          lut = np.zeros((256, 1))
-          for i in range(256):
-            if i < gate_low:
-              lut[i] = 0
-            elif i < gate_high:
-              lut[i] = (i - gate_low) / (gate_high - gate_low) * 255
-            else:
-              lut[i] = 255
 
-          for x in range(len(result)):
-            result[x] = lut[result[x]].reshape((result.shape[1]))
+          result = lut_func(result).astype(self._image_dtype)
+
+          #for x in range(len(result)):
+          #  result[x] = lut[result[x]].reshape((result.shape[1]))
 
           #result = lut[result]
           self._last_equalized_img = np.array(result)
@@ -154,12 +176,21 @@ class CameraHandler:
           print("Snap!")
         tagged_image = self._core.get_tagged_image()
         pixels = np.reshape(
-            tagged_image.pix, newshape=[tagged_image.tags["Height"], tagged_image.tags["Width"], 4]
-        )
-        pixels = cv2.cvtColor(pixels, cv2.COLOR_BGR2GRAY)
+            tagged_image.pix, newshape=[tagged_image.tags["Height"], tagged_image.tags["Width"], self._pixel_shape]
+        ).astype(self._image_dtype)
+
+        if self._pixel_shape != 1:
+          # Convert to grayscale if image is not already
+          pixels = cv2.cvtColor(pixels, cv2.COLOR_BGR2GRAY)
+
+        # Reshape to (_, _) in case shape was (_, _, 1)
+        pixels = pixels.reshape((pixels.shape[0], pixels.shape[1]))
+
+        # Apply values scalar multiplication in case bit depth is not a multiple of 2
+        pixels = pixels * self._INPUT_TO_OUTPUT_BIT_DEPTH_MULT
 
         # Save raw image
-        cv2.imwrite('images/snap.bmp', pixels)
+        #cv2.imwrite('images/snap.bmp', pixels)
 
         result = pixels
 
