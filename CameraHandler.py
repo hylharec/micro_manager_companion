@@ -96,11 +96,21 @@ class CameraHandler:
         "subtraction_mode": "subtract",
         "integration_val": 1,
         "integration": False,
-        "gate": (0, self.BIT_DEPTH-1),
+        "gate": (1, self.BIT_DEPTH-1),
       }
 
       cv2.namedWindow("cv_win", cv2.WINDOW_NORMAL)
       cv2.startWindowThread()
+
+      # Try to load previously saved dark/static pictures
+      try:
+        params["dark"] = cv2.imread("images/dark.png", cv2.IMREAD_UNCHANGED)
+      except Exception as err:
+        print(f"Info: No preexisting dark picture to load. {err}")
+      try:
+        params["static"] = cv2.imread("images/static.png", cv2.IMREAD_UNCHANGED)
+      except Exception:
+        print("Info: No preexisting static picture to load.")
 
       # Some params are saved from one image processing loop to another to prevent recomputation
       # Default gate values (as wide as possible)
@@ -172,34 +182,43 @@ class CameraHandler:
     def _snap_update(self, control_queue: queue.Queue):
       while True:
         self._core.snap_image()
+
+
         if self._verbose:
           print("Snap!")
-        tagged_image = self._core.get_tagged_image()
-        pixels = np.reshape(
-            tagged_image.pix, newshape=[tagged_image.tags["Height"], tagged_image.tags["Width"], self._pixel_shape]
-        ).astype(self._image_dtype)
 
-        if self._pixel_shape != 1:
-          # Convert to grayscale if image is not already
-          pixels = cv2.cvtColor(pixels, cv2.COLOR_BGR2GRAY)
+        # Try might fail on the first line if MM fails to answer correctly
+        try:
+          tagged_image = self._core.get_tagged_image()
 
-        # Reshape to (_, _) in case shape was (_, _, 1)
-        pixels = pixels.reshape((pixels.shape[0], pixels.shape[1]))
+          pixels = np.reshape(
+              tagged_image.pix, newshape=[tagged_image.tags["Height"], tagged_image.tags["Width"], self._pixel_shape]
+          ).astype(self._image_dtype)
 
-        # Apply values scalar multiplication in case bit depth is not a multiple of 2
-        pixels = pixels * self._INPUT_TO_OUTPUT_BIT_DEPTH_MULT
+          if self._pixel_shape != 1:
+            # Convert to grayscale if image is not already
+            pixels = cv2.cvtColor(pixels, cv2.COLOR_BGR2GRAY)
 
-        # Save raw image
-        #cv2.imwrite('images/snap.bmp', pixels)
+          # Reshape to (_, _) in case shape was (_, _, 1)
+          pixels = pixels.reshape((pixels.shape[0], pixels.shape[1]))
 
-        result = pixels
+          # Apply values scalar multiplication in case bit depth is not a multiple of 2
+          pixels = pixels * self._INPUT_TO_OUTPUT_BIT_DEPTH_MULT
 
-        # Queue last received image
-        self._img_queue.append(result)
+          # Save raw image
+          #cv2.imwrite('images/snap.bmp', pixels)
 
-        # Pop oldest image if max queue length was reached
-        if(len(self._img_queue) == self._MAX_INTEGRATION_LEN + 1):
-          self._img_queue.pop(0)
+          result = pixels
+
+          # Queue last received image
+          self._img_queue.append(result)
+
+          # Pop oldest image if max queue length was reached
+          if(len(self._img_queue) == self._MAX_INTEGRATION_LEN + 1):
+            self._img_queue.pop(0)
+
+        except Exception:
+          print("Warning: Error while getting image from MM. Ignoring...")
 
         # Arbitrary sleep time, technically not necessary as "self._core_snap_image()" is blocking
         time.sleep(0.005)
