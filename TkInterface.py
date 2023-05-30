@@ -37,11 +37,14 @@ class TkInterface:
     # Defined here, but put in grid later
     self._contrast = ContrastPlot(self._control_tab, self._cam_handler)
 
-    self._basic_processing = BasicProcessing(self._control_tab, self._cam_handler, self._contrast)
-    self._basic_processing.grid(row=1, column=0, rowspan=1, columnspan=1)
+    self._autogui = AutoGui(self._control_tab, self._cam_handler, "gui.yml")
+    self._autogui.grid(row=0, column=0)
 
-    self._image_integration = ImageIntegration(self._control_tab, self._cam_handler)
-    self._image_integration.grid(row=2, column=0, rowspan=1, columnspan=1)
+    #self._basic_processing = BasicProcessing(self._control_tab, self._cam_handler, self._contrast)
+    #self._basic_processing.grid(row=1, column=0, rowspan=1, columnspan=1)
+    #
+    #self._image_integration = ImageIntegration(self._control_tab, self._cam_handler)
+    #self._image_integration.grid(row=2, column=0, rowspan=1, columnspan=1)
 
     self._contrast.grid(row=3, column=0, rowspan=1, columnspan=1)
 
@@ -57,10 +60,19 @@ class TkInterface:
     self._setup = Setup(self._config_tab, self._cam_handler)
     self._setup.grid(row=0, column=0)
 
+    # ================================================================================================
+    # AutoGui tab
+    #self._autogui_tab = ttk.Frame(self._tabs_ctrl)
+    #self._autogui = AutoGui(self._autogui_tab, self._cam_handler, "gui.yml")
+    #self._autogui.grid(row=0, column=0)
+
+    # ================================================================================================
+
     # Add tabs to layout
     self._tabs_ctrl.add(self._control_tab, text="Control")
     self._tabs_ctrl.add(self._files_tab, text="Saving")
     self._tabs_ctrl.add(self._config_tab, text="Config")
+    #self._tabs_ctrl.add(self._autogui_tab, text="AutoGui")
     self._tabs_ctrl.grid(row=1, column=0)
 
   def pre_exiting(self):
@@ -300,10 +312,7 @@ class BasicProcessing:
     self._cam_handler.update_param("subtract_dark", self._check_dark_value.get())
 
   def _check_dark_mode_update(self):
-    mode = "subtract"
-    if self._check_dark_mode_value.get():
-      mode = "absdiff"
-    self._cam_handler.update_param("subtraction_mode", mode)
+    self._cam_handler.update_param("subtraction_mode", self._check_dark_mode_value.get())
 
   def _check_static_update(self):
     self._cam_handler.update_param("overlay_static", self._check_static_value.get())
@@ -325,7 +334,8 @@ class BasicProcessing:
 
     # Send new gate to contrast plot update thread queue
     self._contrast_plot.update_gate((gate_low, gate_high))
-    self._cam_handler.update_param("gate", (gate_low, gate_high))
+    self._cam_handler.update_param("gate_low", gate_low)
+    self._cam_handler.update_param("gate_high", gate_high)
 
 class ImageIntegration:
   """
@@ -608,6 +618,151 @@ class Filters:
     # Applying filters on the final image
 
     # ########################################################################################################
+
+class AutoGui:
+  def __init__(self, parent, cam_handler: CameraHandler, yaml_file_r_path: str):
+    self._parent = parent
+    self._cam_handler = cam_handler
+
+    self._frame = ttk.Frame(self._parent)
+
+    with open(yaml_file_r_path) as f:
+      self._yaml = yaml.safe_load(f)
+
+    self._tabs = []
+    tabs_names = []
+    self._notebook = ttk.Notebook(self._frame)
+    self._widgets = []
+    for tab, content in self._yaml.items():
+      if type(content) == dict:
+        self._tabs.append(ttk.Frame(self._notebook))
+        tabs_names.append(tab)
+        row = 0
+        for line, line_content in content.items():
+          column = 0
+          if type(line_content) == dict:
+            for widget, params in line_content.items():
+              if type(params) == dict:
+                if params["type"] == "scale":
+                  w = AutoGuiScale(
+                    self._tabs[-1],
+                    self._cam_handler,
+                    from_=int(params["from"]),
+                    to=int(params["to"]),
+                    default=int(params["default"]),
+                    length=int(params["length"]),
+                    span=int(params["span"]),
+                    name=widget,
+                    param_name=params["param"]
+                  )
+                  w.grid(row=row, column=column)
+                  self._widgets.append(w)
+                  column += int(params["span"])
+                elif params["type"] == "check":
+                  w = AutoGuiCheck(
+                    self._tabs[-1],
+                    self._cam_handler,
+                    default=False,
+                    name=widget,
+                    param_name=params["param"]
+                  )
+                  w.grid(row=row, column=column)
+                  self._widgets.append(w)
+                  column += 1
+                elif params["type"] == "button":
+                  w = AutoGuiButton(
+                    self._tabs[-1],
+                    self._cam_handler,
+                    function=params["function"],
+                    name=widget,
+                    param_name=params["param"]
+                  )
+                  w.grid(row=row, column=column)
+                  self._widgets.append(w)
+                  column += 1
+            row += 1
+        self._tabs[-1].grid(row=0, column=0)
+    for tab, name in zip(self._tabs, tabs_names):
+      self._notebook.add(tab, text=name)
+    self._notebook.grid(row=0, column=0)
+
+  def grid(self, row, column):
+    self._frame.grid(row=row, column=column)
+
+class AutoGuiScale:
+  def __init__(self, parent, cam_handler, from_: int, to: int, default: int, length: int, span: int, name: str, param_name: str):
+    self._parent = parent
+    self._cam_handler = cam_handler
+    self._from_ = from_
+    self._to = to
+    self._default = default
+    self._length = length
+    self._span = span
+    self.name = name
+    self.param_name = param_name
+
+    self._frame = ttk.Frame(parent)
+
+    self._label = ttk.Label(self._frame, text=name + ": ")
+    self._label.grid(row=0, column=0, padx=5, pady=5)
+
+    self._widget = ttk.Scale(self._frame, from_=from_, to=to, length=length, command=self._update)
+    self._widget.grid(row=0, column=1, padx=5, pady=5)
+
+    self._label_value = ttk.Label(self._frame, text=f"({default})")
+    self._label_value.grid(row=0, column=2, padx=5, pady=5)
+
+    self._widget.set(default)
+
+  def grid(self, row, column):
+    self._frame.grid(row=row, column=column, columnspan=self._span, padx=5, pady=5)
+
+  def _update(self, _):
+    val = self._widget.get()
+    self._cam_handler.update_param(self.param_name, val)
+    self._label_value.config(text = f"({int(val)})")
+
+class AutoGuiCheck:
+  def __init__(self, parent, cam_handler, default: bool, name: str, param_name: str):
+    self._parent = parent
+    self._cam_handler = cam_handler
+    self._default = default
+    self.name = name
+    self.param_name = param_name
+
+    self._widget_value = tkinter.BooleanVar()
+    self._widget_value.set(default)
+    self._widget = ttk.Checkbutton(
+      self._parent,
+      text=name,
+      variable=self._widget_value,
+      onvalue=True,
+      offvalue=False,
+      command=self._update
+    )
+
+  def grid(self, row, column):
+    self._widget.grid(row=row, column=column, padx=5, pady=5)
+
+  def _update(self):
+    self._cam_handler.update_param(self.param_name, self._widget_value.get())
+
+class AutoGuiButton:
+  def __init__(self, parent, cam_handler, function, name: str, param_name: str):
+    self._parent = parent
+    self._cam_handler = cam_handler
+    self._function = function
+    self.name = name
+    self.param_name = param_name
+
+    self._widget = ttk.Button(self._parent, text=name, command=self._update)
+
+  def grid(self, row, column):
+    self._widget.grid(row=row, column=column, padx=5, pady=5)
+
+  def _update(self):
+    getattr(self._cam_handler, self._function)()
+
 
 class FilterEntry:
   def __init__(self, parent, cam_handler: CameraHandler, name: str, filter_function):

@@ -1,0 +1,70 @@
+Basic Processing:
+  type: tab
+  line0:
+    type: line
+    Take dark image:
+      type: button
+      param: dark
+      function: take_dark_img
+    Substract:
+      type: check
+      param: subtract_dark
+      default: False
+    Absolute Diff:
+      type: check
+      param: subtraction_mode
+      default: False
+  line1:
+    type: line
+    Take static image:
+      type: button
+      param: static
+      function: take_static_img
+    Overlay:
+      type: check
+      param: overlay_static
+      default: False
+    Ovelay opacity:
+      type: scale
+      param: overlay_opacity
+      from: 0
+      to: 100
+      default: 50
+      length: 100
+      span: 1
+  line2:
+    type: line
+    Low contrast gate:
+      type: scale
+      param: gate_low
+      from: 1
+      to: 65534
+      default: 1
+      length: 300
+      span: 3
+  line3:
+    type: line
+    High contrast gate:
+      type: scale
+      param: gate_high
+      from: 2
+      to: 65535
+      default: 65535
+      length: 300
+      span: 3
+  line4:
+    type: line
+    Image averaging:
+      type: scale
+      param: integration_val
+      from: 1
+      to: 50
+      default: 1
+      length: 100
+      span: 2
+    Average:
+      type: check
+      param: integration
+      default: False
+
+

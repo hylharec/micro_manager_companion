@@ -96,25 +96,20 @@ class CameraHandler:
         "subtraction_mode": "subtract",
         "integration_val": 1,
         "integration": False,
-        "gate": (1, self.BIT_DEPTH-1),
+        "gate_low": 1,
+        "gate_high": self.BIT_DEPTH-1
       }
 
       cv2.namedWindow("cv_win", cv2.WINDOW_NORMAL)
       cv2.startWindowThread()
 
-      # Try to load previously saved dark/static pictures
-      try:
-        params["dark"] = cv2.imread("images/dark.png", cv2.IMREAD_UNCHANGED)
-      except Exception as err:
-        print(f"Info: No preexisting dark picture to load. {err}")
-      try:
-        params["static"] = cv2.imread("images/static.png", cv2.IMREAD_UNCHANGED)
-      except Exception:
-        print("Info: No preexisting static picture to load.")
+      # Try to load previously saved dark/static pictures (Error/Warning catching handled by opencv internally)
+      params["dark"] = cv2.imread("images/dark.png", cv2.IMREAD_UNCHANGED)
+      params["static"] = cv2.imread("images/static.png", cv2.IMREAD_UNCHANGED)
 
       # Some params are saved from one image processing loop to another to prevent recomputation
       # Default gate values (as wide as possible)
-      gate_low, gate_high = params["gate"]
+      gate_low, gate_high = params["gate_low"], params["gate_high"]
       # LUT Function to equalize image
       def lut_func(i: np.ndarray) -> np.ndarray:
         nonlocal self
@@ -137,13 +132,13 @@ class CameraHandler:
 
           # Integrate over last few images if required
           if params["integration"] is True:
-            nb_images = min(params["integration_val"], len(self._img_queue))
+            nb_images = min(int(params["integration_val"]), len(self._img_queue))
             for i in range(nb_images):
               result = cv2.addWeighted(result, i / nb_images, self._img_queue[-i-1], (nb_images - i) / nb_images, 0)
 
           # Apply noise image substraction if required
           if params["dark"] is not None and params["subtract_dark"] is True:
-            if params["subtraction_mode"] == "absdiff":
+            if params["subtraction_mode"] is True:
               result = cv2.absdiff(result, params["dark"])
             else:
               result = cv2.subtract(result, params["dark"])
@@ -151,7 +146,7 @@ class CameraHandler:
           self._last_integrated_img = np.array(result)
 
           # Apply equalization before adding the overlay
-          (gate_low, gate_high) = params["gate"]
+          (gate_low, gate_high) = params["gate_low"], params["gate_high"]
 
           result = lut_func(result).astype(self._image_dtype)
 
@@ -228,3 +223,17 @@ class CameraHandler:
 
     def update_param(self, key, val):
       self._parameters_queue.put((key, val))
+
+    def take_dark_img(self):
+      if self.get_last_equalized_img() is None:
+        print("Warning: could not save dark image because no snapped image.")
+      else:
+        self.update_param("dark", self.get_last_equalized_img())
+        cv2.imwrite('images/dark.png', self.get_last_equalized_img())
+
+    def take_static_img(self):
+      if self.get_last_equalized_img() is None:
+        print("Warning: could not save static image because no snapped image.")
+      else:
+        self.update_param("static", self.get_last_equalized_img())
+        cv2.imwrite('images/static.png', self.get_last_equalized_img())
