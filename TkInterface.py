@@ -61,10 +61,17 @@ class TkInterface:
     self._setup.grid(row=0, column=0)
 
     # ================================================================================================
-    # AutoGui tab
-    #self._autogui_tab = ttk.Frame(self._tabs_ctrl)
-    #self._autogui = AutoGui(self._autogui_tab, self._cam_handler, "gui.yml")
-    #self._autogui.grid(row=0, column=0)
+    # Help tab
+    self._help_tab = ttk.Frame(self._tabs_ctrl)
+
+    ttk.Label(self._help_tab, text="Order: Acquisition > Integration > Noise subtraction > Equalization > Filters > Overlay")\
+      .grid(row=0, column=0, padx=5, pady=5)
+
+    ttk.Label(self._help_tab, text="Take dark = last integrated img")\
+      .grid(row=1, column=0, padx=5, pady=5)
+
+    ttk.Label(self._help_tab, text="Take static = last equalized img")\
+      .grid(row=2, column=0, padx=5, pady=5)
 
     # ================================================================================================
 
@@ -72,7 +79,7 @@ class TkInterface:
     self._tabs_ctrl.add(self._control_tab, text="Control")
     self._tabs_ctrl.add(self._files_tab, text="Saving")
     self._tabs_ctrl.add(self._config_tab, text="Config")
-    #self._tabs_ctrl.add(self._autogui_tab, text="AutoGui")
+    self._tabs_ctrl.add(self._help_tab, text="Help")
     self._tabs_ctrl.grid(row=1, column=0)
 
   def pre_exiting(self):
@@ -680,6 +687,17 @@ class AutoGui:
                   w.grid(row=row, column=column)
                   self._widgets.append(w)
                   column += 1
+                elif params["type"] == "dropdown":
+                  w = AutoGuiDropdown(
+                    self._tabs[-1],
+                    self._cam_handler,
+                    values=params["values"],
+                    default=params["default"],
+                    param_name=params["param"]
+                  )
+                  w.grid(row=row, column=column)
+                  self._widgets.append(w)
+                  column += 1
             row += 1
         self._tabs[-1].grid(row=0, column=0)
     for tab, name in zip(self._tabs, tabs_names):
@@ -763,6 +781,27 @@ class AutoGuiButton:
   def _update(self):
     getattr(self._cam_handler, self._function)()
 
+class AutoGuiDropdown:
+  def __init__(self, parent, cam_handler, values: list, default: str, param_name: str):
+    """
+    Creates a drop down menu with values from the values list of str parameter.
+    """
+    self._parent = parent
+    self._cam_handler = cam_handler
+    self.values = values
+    self.default = default
+    self.param_name = param_name
+
+    self._widget_value = tkinter.StringVar()
+    self._widget = ttk.OptionMenu(self._parent, self._widget_value, default, *values, command=self._update)
+
+    self._update(None)
+
+  def grid(self, row, column):
+    self._widget.grid(row=row, column=column, padx=5, pady=5)
+
+  def _update(self, _):
+    self._cam_handler.update_param(self.param_name, self._widget_value.get()),
 
 class FilterEntry:
   def __init__(self, parent, cam_handler: CameraHandler, name: str, filter_function):

@@ -66,5 +66,16 @@ Basic Processing:
       type: check
       param: integration
       default: False
-
-
+Filters:
+  type: tab
+  line0:
+    type: line
+    Edge detection:
+      type: check
+      param: edge
+      default: False
+    Edge type:
+      type: dropdown
+      param: edge_type
+      values: ["All-in", "All-out", "Up", "Down", "Left", "Right"]
+      default: "All-in"

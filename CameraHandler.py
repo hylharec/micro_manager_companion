@@ -22,6 +22,7 @@ class CameraHandler:
       self._update_thread = threading.Thread(target=self._update, args=(self._update_thread_queue, self._parameters_queue))
       self._snap_thread = threading.Thread(target=self._snap_update, args=(self._snap_thread_queue,))
       self._img_queue = []
+      self._last_integrated_pre_substract_img = None
       self._last_integrated_img = None
       self._last_equalized_img = None
       self._last_final_img = None
@@ -58,6 +59,9 @@ class CameraHandler:
         return self._img_queue[-1]
       else:
         return None
+
+    def get_last_integrated_pre_substract_img(self):
+      return self._last_integrated_pre_substract_img
 
     def get_last_integrated_img(self):
       return self._last_integrated_img
@@ -117,7 +121,6 @@ class CameraHandler:
         nonlocal gate_high
         coef = (self.BIT_DEPTH - 1) / (gate_high - gate_low)
         return np.maximum(0, np.minimum(self.BIT_DEPTH-1, (i - gate_low) * coef))
-      #lut_func_vec = np.vectorize(lut_func, otypes=[np.ndarray])
 
       while True:
         # Safely update parameters from queue (hypothesis: low param update rate)
@@ -130,12 +133,16 @@ class CameraHandler:
           result = np.array(self._img_queue[-1])
           # If the snap thread works correctly, the image shape should be (width, height)
 
+          # ========================================== INTEGRATION ==============================================
           # Integrate over last few images if required
           if params["integration"] is True:
             nb_images = min(int(params["integration_val"]), len(self._img_queue))
             for i in range(nb_images):
               result = cv2.addWeighted(result, i / nb_images, self._img_queue[-i-1], (nb_images - i) / nb_images, 0)
 
+          self._last_integrated_pre_substract_img = np.array(result)
+
+          # ====================================== NOISE SUBTRACTION ============================================
           # Apply noise image substraction if required
           if params["dark"] is not None and params["subtract_dark"] is True:
             if params["subtraction_mode"] is True:
@@ -145,6 +152,7 @@ class CameraHandler:
 
           self._last_integrated_img = np.array(result)
 
+          # ========================================== EQUALIZATION =============================================
           # Apply equalization before adding the overlay
           (gate_low, gate_high) = params["gate_low"], params["gate_high"]
 
@@ -156,6 +164,78 @@ class CameraHandler:
           #result = lut[result]
           self._last_equalized_img = np.array(result)
 
+          # ============================================ FILTERS ================================================
+
+          if params.get("edge", False):
+            edge_type = params.get("edge_type", "")
+
+            if edge_type == "All-in":
+              kernel = np.array([
+                [1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1],
+                [1, 1, -24, 1, 1],
+                [1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1],
+              ])
+            elif edge_type == "All-out":
+              kernel = np.array([
+                [-1, -1, -1, -1, -1],
+                [-1, -1, -1, -1, -1],
+                [-1, -1, 24, -1, -1],
+                [-1, -1, -1, -1, -1],
+                [-1, -1, -1, -1, -1],
+              ])
+            elif edge_type == "Down":
+              kernel = np.array([
+                [-1, -1, -1, -1, -1],
+                [-1, -1, -1, -1, -1],
+                [0, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1],
+              ])
+            elif edge_type == "Up":
+              kernel = np.array([
+                [1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1],
+                [0, 0, 0, 0, 0],
+                [-1, -1, -1, -1, -1],
+                [-1, -1, -1, -1, -1],
+              ])
+            elif edge_type == "Right":
+              kernel = np.array([
+                [-1, -1, 0, 1, 1],
+                [-1, -1, 0, 1, 1],
+                [-1, -1, 0, 1, 1],
+                [-1, -1, 0, 1, 1],
+                [-1, -1, 0, 1, 1],
+              ])
+            elif edge_type == "Left":
+              kernel = np.array([
+                [1, 1, 0, -1, -1],
+                [1, 1, 0, -1, -1],
+                [1, 1, 0, -1, -1],
+                [1, 1, 0, -1, -1],
+                [1, 1, 0, -1, -1],
+              ])
+            else:
+              kernel = np.array([1])
+            result = cv2.filter2D(result, -1, kernel)
+
+          if params.get("LOG", False): # Gaussian blur then laplacian filter
+            kernel_gaussian = np.array([
+              [1, 2, 1],
+              [2, 4, 2],
+              [1, 2, 1],
+            ]) / 16
+            kernel_laplacian = np.array([
+              [0, 1, 0],
+              [1, -4, 1],
+              [0, 1, 0],
+            ])
+            result = cv2.filter2D(result, -1, kernel_gaussian)
+            result = cv2.filter2D(result, -1, kernel_laplacian)
+
+          # ============================================ OVERLAY ================================================
           if params["static"] is not None and params["overlay_static"] is True:
             # Send grayscale to red channel for better visualisation
             result = cv2.merge((result * 0, result * 0, result))
@@ -164,9 +244,11 @@ class CameraHandler:
             overlay_opacity = params["overlay_opacity"] / 100.0
             result = cv2.addWeighted(result, 1.0 - overlay_opacity, static, overlay_opacity, 0)
 
+          # ========================================= DISPLAY UPDATE ============================================
           self._last_final_img = result
           cv2.imshow("cv_win", result)
           cv2.waitKey(20)
+          # =====================================================================================================
 
         # Handle thread stop command
         if not control_queue.empty() and control_queue.get() == "Exit":
@@ -225,11 +307,11 @@ class CameraHandler:
       self._parameters_queue.put((key, val))
 
     def take_dark_img(self):
-      if self.get_last_equalized_img() is None:
+      if self.get_last_integrated_pre_substract_img() is None:
         print("Warning: could not save dark image because no snapped image.")
       else:
-        self.update_param("dark", self.get_last_equalized_img())
-        cv2.imwrite('images/dark.png', self.get_last_equalized_img())
+        self.update_param("dark", self.get_last_integrated_pre_substract_img())
+        cv2.imwrite('images/dark.png', self.get_last_integrated_pre_substract_img())
 
     def take_static_img(self):
       if self.get_last_equalized_img() is None:
