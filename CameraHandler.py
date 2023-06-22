@@ -48,6 +48,9 @@ class CameraHandler:
       # Following attribute is used in picture snap thread function
       self._INPUT_TO_OUTPUT_BIT_DEPTH_MULT = int(np.power(2.0, (np.log2(self.BIT_DEPTH) - np.log2(self._INPUT_BIT_DEPTH))))
 
+      # (gate_low, gate_high)
+      self._gates = (1, self.BIT_DEPTH-1)
+
     def __del__(self):
       self.stop()
 
@@ -72,6 +75,13 @@ class CameraHandler:
     def get_last_final_img(self):
       return np.array(self._last_final_img)
 
+    def get_gates(self):
+      """
+      Should only ever be used to plot the gates on the intensity histogram
+      (Warning: currently unsafe behaviour because directly accessed by thread)
+      """
+      return self._gates
+
     def start(self):
       if not self._update_thread.is_alive():
         self._update_thread.start()
@@ -91,6 +101,8 @@ class CameraHandler:
         self._snap_thread.join()
 
     def _update(self, control_queue: queue.Queue, param_queue: queue.Queue):
+      # self._gates is only read by the thread function here, during startup, after it is only written by the thread
+      gate_low, gate_high = self._gates
       params = {
         "dark": None,
         "static": None,
@@ -100,8 +112,8 @@ class CameraHandler:
         "subtraction_mode": "subtract",
         "integration_val": 1,
         "integration": False,
-        "gate_low": 1,
-        "gate_high": self.BIT_DEPTH-1
+        "gate_low": gate_low,
+        "gate_high": gate_high
       }
 
       cv2.namedWindow("cv_win", cv2.WINDOW_NORMAL)
@@ -136,9 +148,10 @@ class CameraHandler:
           # ========================================== INTEGRATION ==============================================
           # Integrate over last few images if required
           if params["integration"] is True:
+            result = np.zeros(self._img_queue[-1].shape)
             nb_images = min(int(params["integration_val"]), len(self._img_queue))
             for i in range(nb_images):
-              result = cv2.addWeighted(result, i / nb_images, self._img_queue[-i-1], (nb_images - i) / nb_images, 0)
+              result += self._img_queue[-i-1] / nb_images
 
           self._last_integrated_pre_substract_img = np.array(result)
 
@@ -155,6 +168,7 @@ class CameraHandler:
           # ========================================== EQUALIZATION =============================================
           # Apply equalization before adding the overlay
           (gate_low, gate_high) = params["gate_low"], params["gate_high"]
+          self._gates = (gate_low, gate_high)
 
           result = lut_func(result).astype(self._image_dtype)
 

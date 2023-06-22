@@ -40,12 +40,6 @@ class TkInterface:
     self._autogui = AutoGui(self._control_tab, self._cam_handler, "gui.yml")
     self._autogui.grid(row=0, column=0)
 
-    #self._basic_processing = BasicProcessing(self._control_tab, self._cam_handler, self._contrast)
-    #self._basic_processing.grid(row=1, column=0, rowspan=1, columnspan=1)
-    #
-    #self._image_integration = ImageIntegration(self._control_tab, self._cam_handler)
-    #self._image_integration.grid(row=2, column=0, rowspan=1, columnspan=1)
-
     self._contrast.grid(row=3, column=0, rowspan=1, columnspan=1)
 
     # ================================================================================================
@@ -112,7 +106,6 @@ class ContrastPlot:
     self._parent = parent
     self._cam_handler = cam_handler
     self._thread_stop_queue = queue.Queue(maxsize=32)
-    self._data_queue = queue.Queue(maxsize=32)
 
     self._frame: ttk.LabelFrame = ttk.LabelFrame(self._parent, text="Contrast Histogram")
 
@@ -145,7 +138,7 @@ class ContrastPlot:
     self._canvas.get_tk_widget().grid(row=0, column=0, columnspan=2, padx=0, pady=0)
 
     # Create thread (not started yet)
-    self._thread = threading.Thread(target=self._thread_update_function, args=(self._thread_stop_queue, self._data_queue))
+    self._thread = threading.Thread(target=self._thread_update_function, args=(self._thread_stop_queue,))
 
   def grid(self, row=0, column=0, rowspan=0, columnspan=0, padx: int = 5, pady: int = 5):
     self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
@@ -169,27 +162,21 @@ class ContrastPlot:
       self._thread_stop_queue.put("Exit")
       self._thread.join()
 
-  def update_gate(self, gate: tuple):
-    if not self._data_queue.full():
-      self._data_queue.put(gate)
-
-  def update_data(self, data: np.array):
-    if not self._data_queue.full():
-      self._data_queue.put(data)
-
-  def _thread_update_function(self, control_queue: queue.Queue, data_queue: queue.Queue):
+  def _thread_update_function(self, control_queue: queue.Queue):
     """
     Thread function.
     """
     print("Thread plots update started.")
     pause_render = False
     running = True
-    (gate_low, gate_high) = (0, self._cam_handler.BIT_DEPTH-1)
+    (gate_low, gate_high) = (-1, -1)
     while running:
       # Get latest data to plot from queue
-      if not data_queue.empty():
-        while not data_queue.empty():
-          (gate_low, gate_high) = data_queue.get()
+
+      # Get latest gates
+      new_gate_low, new_gate_high = self._cam_handler.get_gates()
+      if new_gate_low != gate_low or new_gate_high != gate_high:
+        gate_low, gate_high = new_gate_low, new_gate_high
         for i in range(len(self._gate)):
           if gate_low <= i and i < gate_high:
             self._gate[i] = 100000000.0
@@ -222,172 +209,6 @@ class ContrastPlot:
       time.sleep(self._s_per_frames)
 
     print("Thread hist update stopped.")
-
-class BasicProcessing:
-  """
-  Instanciate, then call grid() method to add to window
-  """
-  def __init__(self, parent, cam_handler: CameraHandler, contrast_plot: ContrastPlot):
-    self._parent = parent
-    self._cam_handler = cam_handler
-    self._contrast_plot = contrast_plot
-
-    self._frame: ttk.LabelFrame = ttk.LabelFrame(self._parent, text="Basic Processing")
-
-    # ########################################################################################################
-    # Dark/Noise image handling
-    self._btn_dark_img = ttk.Button(self._frame, text="Take dark image", command=self._take_dark_img)
-    self._btn_dark_img.grid(row=0, column=0, padx=5, pady=5)
-
-    self._check_dark_value = tkinter.BooleanVar()
-    self._check_dark = ttk.Checkbutton(
-      self._frame,
-      text="Subtract",
-      variable=self._check_dark_value,
-      onvalue=True,
-      offvalue=False,
-      command=self._check_dark_update
-    )
-    self._check_dark.grid(row=0, column=1, padx=5, pady=5)
-
-    self._check_dark_mode_value = tkinter.BooleanVar()
-    self._check_dark_mode = ttk.Checkbutton(
-      self._frame,
-      text="Absolute Diff",
-      variable=self._check_dark_mode_value,
-      onvalue=True,
-      offvalue=False,
-      command=self._check_dark_mode_update
-    )
-    self._check_dark_mode.grid(row=0, column=2, padx=5, pady=5)
-
-    # ########################################################################################################
-    # Overlay handling
-    self._btn_static_img = ttk.Button(self._frame, text="Take static image", command=self._take_static_img)
-    self._btn_static_img.grid(row=1, column=0, padx=5, pady=5)
-
-    self._check_static_value = tkinter.BooleanVar()
-    self._check_static = ttk.Checkbutton(
-      self._frame,
-      text="Overlay",
-      variable=self._check_static_value,
-      onvalue=True,
-      offvalue=False,
-      command=self._check_static_update
-    )
-    self._check_static.grid(row=1, column=1, padx=5, pady=5)
-
-    ttk.Label(self._frame, text="Overlay opacity: ").grid(row=1, column=2, padx=5, pady=5)
-    self._scale_static = ttk.Scale(self._frame, from_=0, to=100, command=self._scale_static_update)
-    self._scale_static.set(50)
-    self._scale_static.grid(row=1, column=3, padx=5, pady=5)
-    # ########################################################################################################
-    # Contrast thresholds handling
-    self._gate_low_label = ttk.Label(self._frame, text="Low contrast gate: 0")
-    self._gate_low_label.grid(row=2, column=0, padx=5, pady=5)
-    self._scale_gate_low = ttk.Scale(self._frame, from_=1, to=self._cam_handler.BIT_DEPTH-2, command=self._gate_scale_update, length=300)
-    self._scale_gate_low.grid(row=2, column=1, columnspan=3, padx=5, pady=5)
-
-    self._gate_high_label = ttk.Label(self._frame, text="High contrast gate: 1")
-    self._gate_high_label.grid(row=3, column=0, padx=5, pady=5)
-    self._scale_gate_high = ttk.Scale(self._frame, from_=2, to=self._cam_handler.BIT_DEPTH-1, command=self._gate_scale_update, length=300)
-    self._scale_gate_high.grid(row=3, column=1, columnspan=3, padx=5, pady=5)
-
-    # Set default values
-    self._scale_gate_low.set(1)
-    self._scale_gate_high.set(self._cam_handler.BIT_DEPTH-1)
-    # ########################################################################################################
-
-  def grid(self, row: int, column: int, rowspan: int, columnspan: int, padx: int = 5, pady: int = 5):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
-
-  def _take_dark_img(self):
-    if self._cam_handler.get_last_equalized_img() is None:
-      print("Warning: could not save dark image because no snapped image.")
-    else:
-      self._cam_handler.update_param("dark", self._cam_handler.get_last_equalized_img())
-      cv2.imwrite('images/dark.png', self._cam_handler.get_last_equalized_img())
-
-  def _take_static_img(self):
-    if self._cam_handler.get_last_equalized_img() is None:
-      print("Warning: could not save static image because no snapped image.")
-    else:
-      self._cam_handler.update_param("static", self._cam_handler.get_last_equalized_img())
-      cv2.imwrite('images/static.png', self._cam_handler.get_last_equalized_img())
-
-  def _check_dark_update(self):
-    self._cam_handler.update_param("subtract_dark", self._check_dark_value.get())
-
-  def _check_dark_mode_update(self):
-    self._cam_handler.update_param("subtraction_mode", self._check_dark_mode_value.get())
-
-  def _check_static_update(self):
-    self._cam_handler.update_param("overlay_static", self._check_static_value.get())
-
-  def _scale_static_update(self, _):
-    self._cam_handler.update_param("overlay_opacity", self._scale_static.get())
-
-  def _gate_scale_update(self, _):
-    gate_low = self._scale_gate_low.get()
-    gate_high = self._scale_gate_high.get()
-
-    # Prevent incorrect gate
-    if gate_low >= gate_high:
-      gate_high = gate_low + 1
-      self._scale_gate_high.set(gate_high)
-
-    self._gate_low_label.config(text = f"Low contrast gate: {int(gate_low)}")
-    self._gate_high_label.config(text = f"High contrast gate: {int(gate_high)}")
-
-    # Send new gate to contrast plot update thread queue
-    self._contrast_plot.update_gate((gate_low, gate_high))
-    self._cam_handler.update_param("gate_low", gate_low)
-    self._cam_handler.update_param("gate_high", gate_high)
-
-class ImageIntegration:
-  """
-  Instanciate, then call grid() method to add to window
-  """
-  def __init__(self, parent, cam_handler: CameraHandler):
-    self._parent = parent
-    self._cam_handler = cam_handler
-
-    self._frame: ttk.LabelFrame = ttk.LabelFrame(self._parent, text="Image Integration")
-
-    # ########################################################################################################
-    # Image integration handling
-
-    self._scale_label_val = tkinter.StringVar()
-    self._scale_label_val.set("1")
-    self._scale_label = ttk.Label(self._frame, textvariable=self._scale_label_val)
-    self._scale_label.grid(row=0, column=0, padx=5, pady=5)
-
-    self._scale_integr = ttk.Scale(self._frame, from_=1, to=50, command=self._integr_val_update)
-    self._scale_integr.grid(row=0, column=1, padx=5, pady=5)
-
-    self._check_integr_value = tkinter.BooleanVar()
-    self._check_integr = ttk.Checkbutton(
-      self._frame,
-      text="Average",
-      variable=self._check_integr_value,
-      onvalue=True,
-      offvalue=False,
-      command=self._check_integr_update
-    )
-    self._check_integr.grid(row=0, column=2, padx=5, pady=5)
-
-    # ########################################################################################################
-
-  def grid(self, row: int, column: int, rowspan: int, columnspan: int, padx: int = 5, pady: int = 5):
-    self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
-
-  def _integr_val_update(self, _):
-    val = int(self._scale_integr.get())
-    self._cam_handler.update_param("integration_val", val)
-    self._scale_label_val.set(val)
-
-  def _check_integr_update(self):
-    self._cam_handler.update_param("integration", self._check_integr_value.get())
 
 class Save:
   """
@@ -610,21 +431,6 @@ class SetupEntry:
   def _entry_update(self):
     self._param_entry.config(style = "unsaved_entry.TEntry")
     return False
-
-class Filters:
-  """
-  Instanciate, then call grid() method to add to window
-  """
-  def __init__(self, parent, cam_handler: CameraHandler):
-    self._parent = parent
-    self._cam_handler = cam_handler
-
-    self._frame: ttk.LabelFrame = ttk.LabelFrame(self._parent, text="Post-processing Filters")
-
-    # ########################################################################################################
-    # Applying filters on the final image
-
-    # ########################################################################################################
 
 class AutoGui:
   def __init__(self, parent, cam_handler: CameraHandler, yaml_file_r_path: str):
