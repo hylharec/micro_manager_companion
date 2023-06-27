@@ -106,6 +106,7 @@ class ContrastPlot:
     self._parent = parent
     self._cam_handler = cam_handler
     self._thread_stop_queue = queue.Queue(maxsize=32)
+    self._gates_queue = queue.Queue(maxsize=32)
 
     self._frame: ttk.LabelFrame = ttk.LabelFrame(self._parent, text="Contrast Histogram")
 
@@ -138,7 +139,10 @@ class ContrastPlot:
     self._canvas.get_tk_widget().grid(row=0, column=0, columnspan=2, padx=0, pady=0)
 
     # Create thread (not started yet)
-    self._thread = threading.Thread(target=self._thread_update_function, args=(self._thread_stop_queue,))
+    self._thread = threading.Thread(target=self._thread_update_function, args=(self._thread_stop_queue, self._gates_queue,))
+
+    # Give reference to queue to the cam handler to enable communication
+    self._cam_handler.set_gate_queue_ref(self._gates_queue)
 
   def grid(self, row=0, column=0, rowspan=0, columnspan=0, padx: int = 5, pady: int = 5):
     self._frame.grid(row=row, column=column, rowspan=rowspan, columnspan=columnspan, padx=padx, pady=pady)
@@ -162,7 +166,7 @@ class ContrastPlot:
       self._thread_stop_queue.put("Exit")
       self._thread.join()
 
-  def _thread_update_function(self, control_queue: queue.Queue):
+  def _thread_update_function(self, control_queue: queue.Queue, gates_queue: queue.Queue):
     """
     Thread function.
     """
@@ -170,13 +174,12 @@ class ContrastPlot:
     pause_render = False
     running = True
     (gate_low, gate_high) = (-1, -1)
+
     while running:
       # Get latest data to plot from queue
-
       # Get latest gates
-      new_gate_low, new_gate_high = self._cam_handler.get_gates()
-      if new_gate_low != gate_low or new_gate_high != gate_high:
-        gate_low, gate_high = new_gate_low, new_gate_high
+      while not gates_queue.empty():
+        gate_low, gate_high = gates_queue.get()
         for i in range(len(self._gate)):
           if gate_low <= i and i < gate_high:
             self._gate[i] = 100000000.0

@@ -1,4 +1,4 @@
-import sys, queue, threading
+import queue, threading
 import time
 import cv2
 import numpy as np
@@ -39,7 +39,7 @@ class CameraHandler:
       elif np.log2(self._INPUT_BIT_DEPTH) > 16:
         self._image_dtype = np.uint32
         self.BIT_DEPTH = np.power(2, 32)
-      elif np.log2(self._INPUT_BIT_DEPTH) >= 8: # TODO > instead of >=
+      elif np.log2(self._INPUT_BIT_DEPTH) > 8:
         self._image_dtype = np.uint16
         self.BIT_DEPTH = np.power(2, 16)
       else:
@@ -48,11 +48,17 @@ class CameraHandler:
       # Following attribute is used in picture snap thread function
       self._INPUT_TO_OUTPUT_BIT_DEPTH_MULT = int(np.power(2.0, (np.log2(self.BIT_DEPTH) - np.log2(self._INPUT_BIT_DEPTH))))
 
-      # (gate_low, gate_high)
-      self._gates = (1, self.BIT_DEPTH-1)
+      # (Optionnal, leave None is not used) This is the queue that the GUI thread that plots an intensity histogram reads
+      # to update the plotting of the gate thresholds.
+      # Since it is the GUI that takes the CameraHandler instance as a parameter, it is in charge of giving a reference
+      # to it's queue to the CameraHandler.
+      self._plot_hist_gate_queue: queue.Queue | None = None
 
     def __del__(self):
       self.stop()
+
+    def set_gate_queue_ref(self, q: queue.Queue):
+      self._plot_hist_gate_queue = q
 
     def update_camera_parameter(self, device, key, val):
       self._core.set_property(device, key, val)
@@ -75,13 +81,6 @@ class CameraHandler:
     def get_last_final_img(self):
       return np.array(self._last_final_img)
 
-    def get_gates(self):
-      """
-      Should only ever be used to plot the gates on the intensity histogram
-      (Warning: currently unsafe behaviour because directly accessed by thread)
-      """
-      return self._gates
-
     def start(self):
       if not self._update_thread.is_alive():
         self._update_thread.start()
@@ -102,7 +101,6 @@ class CameraHandler:
 
     def _update(self, control_queue: queue.Queue, param_queue: queue.Queue):
       # self._gates is only read by the thread function here, during startup, after it is only written by the thread
-      gate_low, gate_high = self._gates
       params = {
         "dark": None,
         "static": None,
@@ -112,8 +110,8 @@ class CameraHandler:
         "subtraction_mode": "subtract",
         "integration_val": 1,
         "integration": False,
-        "gate_low": gate_low,
-        "gate_high": gate_high
+        "gate_low": 1,
+        "gate_high": self.BIT_DEPTH-1
       }
 
       cv2.namedWindow("cv_win", cv2.WINDOW_NORMAL)
@@ -167,15 +165,15 @@ class CameraHandler:
 
           # ========================================== EQUALIZATION =============================================
           # Apply equalization before adding the overlay
-          (gate_low, gate_high) = params["gate_low"], params["gate_high"]
-          self._gates = (gate_low, gate_high)
+          (n_gate_low, n_gate_high) = params["gate_low"], params["gate_high"]
+          # Only push gates in GUI hist plot queue if it changed.
+          if n_gate_low != gate_low or n_gate_high != gate_high:
+            (gate_low, gate_high) = (n_gate_low, n_gate_high)
+            if self._plot_hist_gate_queue is not None:
+              self._plot_hist_gate_queue.put(((n_gate_low, n_gate_high)))
 
           result = lut_func(result).astype(self._image_dtype)
 
-          #for x in range(len(result)):
-          #  result[x] = lut[result[x]].reshape((result.shape[1]))
-
-          #result = lut[result]
           self._last_equalized_img = np.array(result)
 
           # ============================================ FILTERS ================================================
